@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Подписка с учётом приложения — посредник перед подпиской 3X-UI.
 
-Original KIT: https://github.com/itsnotkubrick/3X-UI_KIT
+Thanks to itsnotkubrick for VPN server setup ideas: https://github.com/itsnotkubrick
 
 Слушает публичный адрес подписки (HTTPS) и ходит в подписку 3X-UI на 127.0.0.1:
   * Clash / Mihomo (Clash Verge, FlClash, Mihomo Party…) — конфиг 3X-UI плюс AmneziaWG

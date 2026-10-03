@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Original KIT: https://github.com/itsnotkubrick/3X-UI_KIT
+# Thanks to itsnotkubrick for VPN server setup ideas: https://github.com/itsnotkubrick
 #
 # Установка:  bash <(curl -fsSL https://raw.githubusercontent.com/McElast/3x-easy-one/v1.0.0/install.sh)
 #
@@ -105,7 +105,7 @@ kit_banner() {
   echo
   echo "${B}McElast 3X Easy One — KIT $KIT_VERSION${N}"
   echo "Источник: $REPO_URL:$REPO_REF"
-  echo "Оригинальный KIT: itsnotkubrick/3X-UI_KIT (авторство сохранено)."
+  echo "Спасибо itsnotkubrick за идеи; авторам 3X-UI, Xray, Mihomo, Hysteria и AmneziaWG — за технологии."
 }
 
 main() {

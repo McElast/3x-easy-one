@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # kit — пользователи 3X-UI KIT: один пользователь сразу на всех протоколах.
-# Original KIT: https://github.com/itsnotkubrick/3X-UI_KIT
+# Thanks to itsnotkubrick for VPN server setup ideas: https://github.com/itsnotkubrick
 #
 #   kit user add имя [--gb 50] [--days 30] [--devices 3]
 #   kit user list | link имя | limit имя [--gb N] [--days N] | off имя | on имя | del имя

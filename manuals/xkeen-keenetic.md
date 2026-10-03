@@ -42,8 +42,7 @@
 ## 3. Настройте DNS
 
 Пропишите шифрованные DNS-серверы (DoT или DoH) по
-[инструкции Keenetic](https://support.keenetic.ru/ultra/kn-1811/ru/31543-dot-and-doh-proxy-servers-for-dns-requests-encryption.html) —
-без этого XKeen работает неправильно.
+[инструкции Keenetic][keenetic-dns] — без этого XKeen работает неправильно.
 
 > [!IMPORTANT]
 > **KeeneticOS 5.2 и новее.** XKeen нужен токен доступа к роутеру.
@@ -94,3 +93,6 @@ XKeen — отдельный внешний инструмент для роут
 ---
 
 [← На главную](../README.md)
+
+[keenetic-dns]:
+  https://support.keenetic.ru/ultra/kn-1811/ru/31543-dot-and-doh-proxy-servers-for-dns-requests-encryption.html

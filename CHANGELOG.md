@@ -1,17 +1,25 @@
-# Changelog
+# История изменений
 
-## v1.0.0 — подготовлена локально, требуется приёмка на тестовом VPS
+## v1.0.0
 
-- Runtime source: McElast/3x-easy-one; tag/SHA archive keeps installer, CLI and subscription in one snapshot. Original KIT attribution preserved.
-- Default profile: REALITY, XHTTP REALITY, Hysteria2, AmneziaWG classic and 3.1; existing other protocol implementations retained for explicit selection.
-- Per-device users and QR retained; subscription token and shared secret prefix have 128-bit randomness; reserved twin names and literal matching prevent cross-device revoke.
-- Failed client/AWG enumeration now aborts user operations instead of reporting success. Matrix runner returns failure for failed/empty runs and stops only its own client process. Shell/config version files retain LF on Windows; SSH tunnel output includes the detected SSH port.
-- Mihomo VPN/AUTO/FALLBACK, ordered priority, 60-second checks, full internet with LAN exceptions, DNS and explicit TUN activation. AWG31 only for known compatible core or deliberate opt-in.
-- Administrative panel stays on localhost with SSH tunnel; nginx no longer publishes it. Public subscription remains HTTPS.
-- Fixed acme.sh 3.1.6 and checksum, IP certificate renewal via systemd; 3X-UI v3.8.5, Xray v26.6.27 and standalone Hysteria 2.12.3 retained.
-- kit status, doctor, consistent SQLite backup, version and stable release metadata checks; no automatic DB migration/restore or SSH hardening.
-- Removed KIT branding cron that rewrote external x-ui menu. Retained functional certificate reload/renewal.
-- Optional router dashboard pinned to zashboard v3.29.1 instead of mutable latest.
-- Protected secret files, no secret subscription paths or arbitrary User-Agent in KIT logs, no server IP lookup endpoints.
-- Russian README, free client walkthroughs, SECURITY, recovery/development/troubleshooting documentation and GitHub publication steps.
-- No new test infrastructure. Local checks are separate from real-client/VPS acceptance.
+- Установка из `McElast/3x-easy-one`: installer, CLI и сервис подписок загружаются одним архивом
+  выбранного тега или commit SHA.
+- Основной профиль: REALITY, XHTTP REALITY, Hysteria2, AmneziaWG classic и 3.1.
+  Остальные протоколы доступны при явном выборе.
+- Отдельные пользователи и QR-коды для устройств. Токен подписки и общий префикс URL имеют
+  128 бит случайности; зарезервированные имена связанных записей исключают пересечение устройств.
+- Ошибка получения списка клиентов или AWG прерывает операцию без ложного сообщения об успехе.
+- Матрица клиентов возвращает ненулевой код при провале или пустом наборе и останавливает свой процесс клиента.
+- Shell/config-файлы сохраняют LF на Windows. Команда SSH-туннеля содержит обнаруженный SSH-порт.
+- Профили Mihomo с группами `VPN`, `AUTO` и `FALLBACK`, приоритетом транспортов, проверкой раз в 60 секунд,
+  DNS и исключениями для локальной сети. TUN включается пользователем в клиенте.
+- AWG31 включается для подтверждённого совместимого ядра или по явному параметру подписки.
+- Панель доступна только на localhost через SSH-туннель. Публичная подписка работает по HTTPS.
+- acme.sh 3.1.6 закреплён вместе с SHA-256; продление IP-сертификата выполняется через systemd.
+  Версии компонентов: 3X-UI v3.8.5, Xray v26.6.27, отдельный Hysteria 2.12.3.
+- Команды `kit status`, `doctor`, `backup`, `version` и проверка стабильных выпусков.
+  Восстановление, миграции БД и настройка SSH выполняются вручную.
+- Удалена cron-задача, переписывавшая меню внешней панели x-ui. Сохранены задачи обновления сертификатов.
+- Панель роутера закреплена на zashboard v3.29.1.
+- Секретные файлы защищены правами доступа. Журналы KIT не содержат путей подписок и произвольного User-Agent.
+- Документация на русском: установка, клиенты, безопасность, восстановление, диагностика и разработка.

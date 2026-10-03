@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Original KIT: https://github.com/itsnotkubrick/3X-UI_KIT
+# Thanks to itsnotkubrick for VPN server setup ideas: https://github.com/itsnotkubrick
 #
 # Установка: скачайте полный архив версии и выполните bash scripts/hysteria2.sh
 # Управление:  hy2 help
@@ -194,7 +194,7 @@ render_config() {
 write_unit() {
   cat >"$UNIT" <<EOF
 [Unit]
-Description=Hysteria2 Server (3X-UI_KIT)
+Description=Hysteria2 Server (3x-easy-one)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=600
