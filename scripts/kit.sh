@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # kit — пользователи 3X-UI KIT: один пользователь сразу на всех протоколах.
-# https://github.com/itsnotkubrick/3X-UI_KIT
+# Original KIT: https://github.com/itsnotkubrick/3X-UI_KIT
 #
 #   kit user add имя [--gb 50] [--days 30] [--devices 3]
 #   kit user list | link имя | limit имя [--gb N] [--days N] | off имя | on имя | del имя
 
 set -Eeuo pipefail
+umask 077
 export LC_ALL=C.UTF-8  # ширина колонок по символам, а не байтам
 
 XUI_ENV=/etc/x-ui/install-result.env
@@ -23,12 +24,12 @@ die()  { printf '%s\n' "${R}✗${N}  $*" >&2; exit 1; }
 [[ -f $XUI_ENV && -f $KIT_ENV ]] || die "Не найдена установка — сначала поставьте сервер скриптом 3x-ui.sh."
 # shellcheck disable=SC1090
 . "$XUI_ENV"; . "$KIT_ENV"
+# shellcheck source=repo.conf
+. /etc/kit/repo.conf
 
-API=""
-for scheme in https http; do
-  API="$scheme://127.0.0.1:$XUI_PANEL_PORT/$XUI_WEB_BASE_PATH/panel/api"
-  curl -fsk -m 5 -o /dev/null -H "Authorization: Bearer $XUI_API_TOKEN" "$API/server/getNewUUID" 2>/dev/null && break
-done
+API="${API_SCHEME:-http}://127.0.0.1:$XUI_PANEL_PORT/$XUI_WEB_BASE_PATH/panel/api"
+export HOST SUB_BASE SUB_PATH SUB_INTERNAL SINGLE XUI_PANEL_PORT XUI_WEB_BASE_PATH XUI_API_TOKEN
+export CERT KEY API_SCHEME REPO_OWNER REPO_NAME
 
 api() { # METHOD path [json]
   local out
@@ -37,7 +38,7 @@ api() { # METHOD path [json]
   else
     out=$(curl -sSk -m 20 -H "Authorization: Bearer $XUI_API_TOKEN" -H 'Content-Type: application/json' -X "$1" -d "${3:-{\}}" "$API/$2")
   fi
-  [[ $(jq -r '.success' <<<"$out" 2>/dev/null) == true ]] || die "Панель ответила ошибкой: $(jq -r '.msg // .' <<<"$out" 2>/dev/null | head -c 300)"
+  [[ $(jq -r '.success' <<<"$out" 2>/dev/null) == true ]] || die "Панель ответила ошибкой: проверьте kit doctor и службу x-ui"
   jq -c '.obj' <<<"$out"
 }
 
@@ -50,9 +51,10 @@ awg_ids() { api GET inbounds/list | jq -r '[.[] | select(.protocol == "amneziawg
 non_awg_ids() { api GET inbounds/list | jq -c '[.[] | select(.protocol != "amneziawg") | .id]'; }
 
 awg_attach() { # имя subId [лимит-байт] [срок-мс] [устройств]
-  local name=$1 sid=$2 total=${3:-0} exp=${4:-0} lim=${5:-0} n=1 id email have
-  have=$(api GET clients/list | jq -c 'if type == "array" then . else .clients end')
-  for id in $(awg_ids); do
+  local name=$1 sid=$2 total=${3:-0} exp=${4:-0} lim=${5:-0} n=1 id email have ids
+  have=$(api GET clients/list | jq -c 'if type == "array" then . else .clients end') || die "Не удалось получить список клиентов."
+  ids=$(awg_ids) || die "Не удалось получить подключения AmneziaWG."
+  for id in $ids; do
     local esid=$sid
     if ((n == 1)); then email=$name
     elif ((n == 2)); then email="$name-awg"; esid="$sid-awg"
@@ -72,9 +74,12 @@ awg_attach() { # имя subId [лимит-байт] [срок-мс] [устро�
 clients() { api GET clients/list | jq -c 'if type == "array" then . else .clients end'; }
 client() { clients | jq -c --arg e "$1" 'map(select(.email == $e))[0] // empty'; }
 # Все записи пользователя: основная и «двойники» для AmneziaWG («имя-awgN»).
-emails_of() { clients | jq -r --arg e "$1" '.[] | select(.email == $e or (.email | test("^" + $e + "-awg[0-9]*$"))) | .email'; }
-valid_name() { [[ $1 =~ ^[A-Za-z0-9_.-]{1,32}$ ]] || die "Имя: латиница, цифры, _ . - (до 32 символов)."; }
-rand_id() { openssl rand -base64 48 | tr -dc 'a-z0-9' | head -c 16; }
+emails_of() { clients | jq -r --arg e "$1" '.[] | select(.email == $e or ((.email | startswith($e + "-awg")) and (.email | ltrimstr($e + "-awg") | test("^[0-9]*$")))) | .email'; }
+valid_name() {
+  [[ $1 =~ ^[A-Za-z0-9_.-]{1,32}$ ]] || die "Имя: латиница, цифры, _ . - (до 32 символов)."
+  [[ ! $1 =~ -awg[0-9]*$ ]] || die "Суффикс -awg зарезервирован для внутренних записей."
+}
+rand_id() { openssl rand -hex 16; }
 
 gb_bytes() { [[ $1 =~ ^[0-9]+$ ]] || die "--gb: целое число гигабайт"; echo $(($1 * 1073741824)); }
 days_ms() { [[ $1 =~ ^[0-9]+$ ]] || die "--days: целое число дней"; ((${1} == 0)) && { echo 0; return; }; echo $((($(date +%s) + $1 * 86400) * 1000)); }
@@ -90,8 +95,8 @@ show_link() { # имя subId
   local url
   url=$(sub_url "$2")
   echo
-  echo "Подписка ${B}$1${N} — все протоколы одной ссылкой. Вставьте в Happ, Hiddify, Karing,"
-  echo "v2rayN, Clash Verge или FlClash:"
+  echo "Подписка ${B}$1${N} — совместимые протоколы одной ссылкой. Вставьте в Clash Verge Rev, FlClash или Happ:"
+  echo "Subscription URL и QR — секреты подключения. Не публикуйте их."
   echo
   echo "$url"
   echo
@@ -103,6 +108,7 @@ cmd_add() {
   local name=${1:-} gb=0 days=0 devices=0
   valid_name "$name"; shift
   while [[ $# -gt 0 ]]; do
+    [[ $# -ge 2 ]] || die "Для $1 нужно значение."
     case $1 in
       --gb) gb=$2; shift 2 ;;
       --days) days=$2; shift 2 ;;
@@ -110,9 +116,11 @@ cmd_add() {
       *) die "Неизвестный параметр: $1" ;;
     esac
   done
+  [[ $devices =~ ^[0-9]+$ ]] || die "--devices: целое число"
   [[ -z $(client "$name") ]] || die "Пользователь $name уже есть. Ссылка: kit user link $name"
   local ids sid body
   ids=$(non_awg_ids)
+  [[ $ids != '[]' ]] || ids=$(awg_ids | jq -s '.[0:1]')
   [[ $ids != "[]" ]] || die "На сервере нет подключений."
   sid=$(rand_id)
   body=$(jq -nc --arg e "$name" --arg s "$sid" --argjson t "$(gb_bytes "$gb")" --argjson x "$(days_ms "$days")" \
@@ -167,9 +175,11 @@ cmd_list() {
 
 # Меняет все записи пользователя (основную и «двойников» AmneziaWG), каждую — от её собственных данных.
 update_user() { # имя jq-фильтр [аргументы jq...]
-  local name=$1 filter=$2 e rec body
+  local name=$1 filter=$2 e rec body records
   shift 2
-  for e in $(emails_of "$name"); do
+  records=$(emails_of "$name") || die "Не удалось получить записи пользователя $name."
+  [[ -n $records ]] || die "Не найдены записи пользователя $name."
+  for e in $records; do
     rec=$(client "$e")
     body=$(jq -c "$@" "{email, subId, totalGB, expiryTime, limitIp, enable, comment} | $filter" <<<"$rec")
     api POST "clients/update/$e" "$body" >/dev/null
@@ -181,6 +191,7 @@ cmd_limit() {
   valid_name "$name"; shift
   [[ -n $(client "$name") ]] || die "Нет пользователя $name"
   while [[ $# -gt 0 ]]; do
+    [[ $# -ge 2 ]] || die "Для $1 нужно значение."
     case $1 in
       --gb) gb=$(gb_bytes "$2"); f+=" | .totalGB = \$gb"; shift 2 ;;
       --days) days=$(days_ms "$2"); f+=" | .expiryTime = \$days"; shift 2 ;;
@@ -207,8 +218,10 @@ cmd_del() {
     read -rp "Удалить $name со всех протоколов? [y/N] " ans
     [[ $ans =~ ^[yYдД]$ ]] || { echo "Отменено."; return; }
   fi
-  local e
-  for e in $(emails_of "$name"); do api POST "clients/del/$e" >/dev/null; done
+  local e records
+  records=$(emails_of "$name") || die "Не удалось получить записи пользователя $name."
+  [[ -n $records ]] || die "Не найдены записи пользователя $name."
+  for e in $records; do api POST "clients/del/$e" >/dev/null; done
   say "Пользователь $name удалён, его подписка больше не работает."
 }
 
@@ -223,8 +236,34 @@ ${B}kit${N} — пользователи: один пользователь ср
   kit user limit имя [--gb N] [--days N] [--devices N]    изменить лимиты (0 — без ограничений)
   kit user off имя  /  kit user on имя                    выключить и включить
   kit user del имя                                        удалить
+  kit status                                              состояние сервера
+  kit doctor                                              диагностика без секретов
+  kit backup                                              защищённый архив данных
+  kit version                                             версия KIT и источник
+  kit update check                                        проверить stable release
+  kit update                                              backup + инструкция ручного обновления
+  kit harden ssh                                          безопасный порядок настройки SSH
 EOF
 }
+
+case "${1:-}" in
+  status|doctor|backup) exec python3 /usr/local/lib/kit/kit-admin.py "$1" ;;
+  version) echo "KIT $KIT_VERSION ($REPO_OWNER/$REPO_NAME:$REPO_REF)"; exit 0 ;;
+  update)
+    if [[ ${2:-} == check ]]; then exec python3 /usr/local/lib/kit/kit-admin.py update-check; fi
+    [[ $# == 1 ]] || die "Использование: kit update [check]"
+    python3 /usr/local/lib/kit/kit-admin.py backup
+    echo "Автоматическое применение отключено: обновление панели/БД требует ручного review."
+    echo "$REPO_URL/blob/$REPO_REF/manuals/DEVELOPMENT.md"
+    exit 0 ;;
+  harden)
+    [[ ${2:-} == ssh ]] || die "Использование: kit harden ssh"
+    echo "SSH не изменён. Создайте sudo-пользователя, установите его public key и проверьте вход в НОВОЙ сессии."
+    echo "Только затем sshd -t, отключение пароля и проверка входа; текущую сессию держите открытой."
+    echo "$REPO_URL/blob/$REPO_REF/SECURITY.md"
+    exit 0 ;;
+  restore) die "Автоматическое восстановление не поддерживается. Сначала kit backup; см. manuals/INSTALL.md." ;;
+esac
 
 case "${1:-} ${2:-}" in
   "user add") shift 2; cmd_add "$@" ;;

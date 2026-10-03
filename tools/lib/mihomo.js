@@ -194,7 +194,7 @@
       'external-controller': '0.0.0.0:9090',
       secret: opts.secret || randomSecret(),
       'external-ui': 'zashboard',
-      'external-ui-url': 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip',
+      'external-ui-url': 'https://github.com/Zephyruso/zashboard/releases/download/v3.29.1/dist.zip',
       sniffer: {
         enable: true,
         sniff: { HTTP: { __flow: 1, ports: [80, 8080] }, TLS: { __flow: 1, ports: [443, 8443] }, QUIC: { __flow: 1, ports: [443, 8443] } },
@@ -251,7 +251,7 @@
     rules.push('MATCH,' + (opts.finalProxy ? PROXY : 'DIRECT'));
     cfg.rules = rules;
 
-    const head = '# Сгенерировано: https://itsnotkubrick.github.io/3X-UI_KIT/tools/mihomo/\n' +
+    const head = '# Сгенерировано: McElast/3x-easy-one tools/mihomo/\n' +
       '# Файл для XKeen: /opt/etc/mihomo/config.yaml, затем xkeen -restart\n' +
       '# Панель управления: http://IP-роутера:9090/ui (секрет — поле secret ниже)\n';
     return { yaml: head + yaml(cfg).replace(/^\n/, ''), config: cfg, count: proxies.length };

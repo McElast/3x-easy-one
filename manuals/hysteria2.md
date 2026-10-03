@@ -24,10 +24,10 @@
 
 ## Установка
 
-Подключитесь к серверу по SSH и выполните:
+Это отдельная advanced установка, не основной recommended KIT. Не запускайте её на VPS с KIT: 443/udp уже занят. Скачайте полный архив закреплённой версии McElast/3x-easy-one, подключитесь по SSH и из каталога архива выполните:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/itsnotkubrick/3X-UI_KIT/main/scripts/hysteria2.sh)
+bash scripts/hysteria2.sh
 ```
 
 ![Установка Hysteria2](assets/script-hysteria2.svg)
@@ -60,7 +60,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/itsnotkubrick/3X-UI_KIT/main
 | `hy2 list` | список пользователей |
 | `hy2 link имя` | ссылка и QR-код ещё раз |
 | `hy2 status` | версия, адрес и состояние |
-| `hy2 update` | обновить до новой проверенной версии |
+| `hy2 update` | переустановить закреплённый бинарник; новая версия — после ручного review |
 | `hy2 uninstall` | удалить всё |
 
 ## Если что-то пошло не так

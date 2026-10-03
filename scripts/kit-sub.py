@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Подписка с учётом приложения — посредник перед подпиской 3X-UI.
 
-https://github.com/itsnotkubrick/3X-UI_KIT
+Original KIT: https://github.com/itsnotkubrick/3X-UI_KIT
 
 Слушает публичный адрес подписки (HTTPS) и ходит в подписку 3X-UI на 127.0.0.1:
   * Clash / Mihomo (Clash Verge, FlClash, Mihomo Party…) — конфиг 3X-UI плюс AmneziaWG
@@ -24,6 +24,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 
 import yaml
 
@@ -34,7 +35,7 @@ CLASH_UA = re.compile(r"clash|mihomo|flclash|stash|nyanpasu|meta", re.I)
 NO_AWG_UA = re.compile(r"karing|hiddify|nekobox|sing-?box|husi|stash|shadowrocket|v2box|streisand|happ|loon|surge|quantumult", re.I)
 SUB_ID = re.compile(r"^[A-Za-z0-9_.@-]{1,64}$")
 PASS_HEADERS = ("content-type", "content-disposition", "profile-title", "profile-update-interval",
-                "profile-web-page-url", "subscription-userinfo", "support-url", "cache-control")
+                "subscription-userinfo")
 
 with open(CONFIG, encoding="utf-8") as f:
     CONF = json.load(f)
@@ -51,11 +52,17 @@ def upstream(sub_id, ua, host, accept):
         "User-Agent": ua, "Host": host, "Accept": accept or "*/*"})
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
-            return r.status, {k.lower(): v for k, v in r.getheaders()}, r.read()
+            body = r.read(2 * 1024 * 1024 + 1)
+            if len(body) > 2 * 1024 * 1024:
+                return None, {}, b""
+            return r.status, {k.lower(): v for k, v in r.getheaders()}, body
     except urllib.error.HTTPError as e:
-        return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read()
+        body = e.read(2 * 1024 * 1024 + 1)
+        if len(body) > 2 * 1024 * 1024:
+            return None, {}, b""
+        return e.code, {k.lower(): v for k, v in e.headers.items()}, body
     except (urllib.error.URLError, OSError, socket.timeout) as e:
-        log(f"upstream недоступен: {e}")
+        log("subscription backend недоступен")
         return None, {}, b""
 
 
@@ -123,6 +130,81 @@ def merge_awg(main_yaml, awg_yaml):
     return yaml.safe_dump(main, allow_unicode=True, sort_keys=False).encode()
 
 
+def mihomo_profile(body, ua, awg31=False):
+    """Keep only supported transports; build a complete full-tunnel profile."""
+    cfg = yaml.safe_load(body)
+    if not isinstance(cfg, dict) or not isinstance(cfg.get("proxies"), list):
+        raise ValueError("invalid subscription")
+    version = re.search(r"mihomo[/\s]v?(\d+)\.(\d+)\.(\d+)", ua, re.I)
+    flclash = re.search(r"flclash[/\s]v?(\d+)\.(\d+)\.(\d+)", ua, re.I)
+    awg31 = awg31 or bool(version and tuple(map(int, version.groups())) >= (1, 19, 30))
+    # Official stable v0.8.98 core submodule was checked for v3.1 fields.
+    awg31 = awg31 or bool(flclash and tuple(map(int, flclash.groups())) >= (0, 8, 98))
+    proxies = []
+    seen = {"VPN", "AUTO", "FALLBACK", "DIRECT", "REJECT"}
+    for source in cfg["proxies"]:
+        if not isinstance(source, dict):
+            continue
+        p = dict(source)
+        opts = p.get("amnezia-wg-option")
+        if isinstance(opts, dict):
+            full = opts.get("version") == 3 or bool(opts.get("header-protection-key"))
+            if full and not awg31:
+                continue
+            name = "AWG31" if full else "AWG CLASSIC"
+            if full:
+                p["amnezia-wg-option"] = dict(opts, version=3)
+        elif p.get("type") == "vless" and p.get("reality-opts"):
+            name = "XHTTP" if p.get("network") == "xhttp" else "REALITY"
+            if name == "XHTTP" and version and tuple(map(int, version.groups())) < (1, 19, 22):
+                continue
+        elif p.get("type") == "hysteria2":
+            name = "HYSTERIA2"
+        else:
+            name = str(p.get("name", "VPN"))
+        name = re.sub(r"[\r\n,]", " ", name)
+        base, n = name, 2
+        while name in seen:
+            name = f"{base} {n}"
+            n += 1
+        seen.add(name)
+        p["name"] = name
+        proxies.append(p)
+    if not proxies:
+        raise ValueError("no supported proxies")
+    priority = {"REALITY": 0, "XHTTP": 1, "HYSTERIA2": 2, "AWG31": 3, "AWG CLASSIC": 4}
+    proxies.sort(key=lambda p: priority.get(p["name"], 5))
+    names = [p["name"] for p in proxies]
+    probe = CONF.get("probe_url", "https://www.gstatic.com/generate_204")
+    lan = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8",
+           "169.254.0.0/16", "224.0.0.0/4"]
+    return yaml.safe_dump({
+        "mixed-port": 7890, "allow-lan": False, "bind-address": "127.0.0.1",
+        "mode": "rule", "log-level": "warning", "ipv6": False,
+        "tun": {"enable": False, "stack": "mixed", "auto-route": True,
+                "auto-detect-interface": True, "dns-hijack": ["any:53", "tcp://any:53"],
+                "route-exclude-address": lan},
+        "dns": {"enable": True, "listen": "127.0.0.1:1053", "ipv6": False,
+                "enhanced-mode": "fake-ip", "fake-ip-filter": ["*.lan", "*.local", "localhost"],
+                "nameserver-policy": {"+.lan": "system", "+.local": "system"},
+                "direct-nameserver": ["system"],
+                "respect-rules": True, "default-nameserver": ["1.1.1.1", "9.9.9.9"],
+                "proxy-server-nameserver": ["https://1.1.1.1/dns-query"],
+                "nameserver": ["https://1.1.1.1/dns-query", "https://dns.quad9.net/dns-query"]},
+        "proxies": proxies,
+        "proxy-groups": [
+            {"name": "VPN", "type": "select", "proxies": ["AUTO", "FALLBACK"] + names},
+            {"name": "AUTO", "type": "url-test", "proxies": names, "url": probe,
+             "interval": 60, "tolerance": 100, "lazy": True},
+            {"name": "FALLBACK", "type": "fallback", "proxies": names, "url": probe,
+             "interval": 60, "lazy": True}],
+        "rules": ["DOMAIN-SUFFIX,lan,DIRECT", "DOMAIN-SUFFIX,local,DIRECT"] +
+                 [f"IP-CIDR,{net},DIRECT,no-resolve" for net in lan] +
+                 ["IP-CIDR6,::1/128,DIRECT,no-resolve", "IP-CIDR6,fc00::/7,DIRECT,no-resolve",
+                  "IP-CIDR6,fe80::/10,DIRECT,no-resolve", "MATCH,VPN"],
+    }, allow_unicode=True, sort_keys=False).encode()
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "nginx"
     sys_version = ""
@@ -158,15 +240,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.do_GET()
 
     def do_GET(self):
-        path = self.path.split("?", 1)[0]
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        options = urllib.parse.parse_qs(parsed.query)
         if not path.startswith(PATH):
             return self.send_plain(404, "404 page not found")
         sub_id = path[len(PATH):]
         if not SUB_ID.match(sub_id):
             return self.send_plain(404, "404 page not found")
         ua = self.headers.get("User-Agent", "")
-        host = self.headers.get("Host", CONF.get("host", ""))
+        # A supplied Host must never change generated server addresses.
+        host = CONF.get("host", "")
         accept = self.headers.get("Accept", "")
+        if options.get("format") == ["mihomo"]:
+            ua = "mihomo/1.19.22"
         code, headers, body = upstream(sub_id, ua, host, accept)
         if code is None:
             return self.send_plain(502, "subscription backend is unavailable")
@@ -174,19 +261,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         clash = bool(CLASH_UA.search(ua)) and "yaml" in headers.get("content-type", "")
         awg = clash and not NO_AWG_UA.search(ua)
         # В журнал — только приложение и что ему отдали, без IP.
-        log(f"{ua[:80]!r} → {'clash+awg' if awg else 'clash' if clash else headers.get('content-type', '?').split(';')[0]}")
+        log("subscription: mihomo" if clash else "subscription: client")
         try:
-            if code == 200 and clash and not awg:
-                body = strip_awg(body)
-            elif code == 200 and awg and not sub_id.endswith(("-awg", "-tg")):
+            if code == 200 and clash:
+                if not awg:
+                    body = strip_awg(body)
+                elif not sub_id.endswith(("-awg", "-tg")):
                 # Установки до kit 1.1 держали AmneziaWG в подписке «<id>-awg» — подмешиваем её.
-                acode, _, abody = upstream(sub_id + "-awg", ua, host, accept)
-                if acode == 200 and abody:
-                    body = merge_awg(body, abody)
+                    acode, _, abody = upstream(sub_id + "-awg", ua, host, accept)
+                    if acode == 200 and abody:
+                        body = merge_awg(body, abody)
+                body = mihomo_profile(body, ua, options.get("awg31") == ["1"])
             elif code == 200 and "text/plain" in headers.get("content-type", ""):
                 body = strip_links(body)
-        except (yaml.YAMLError, UnicodeError) as e:
-            log(f"не удалось обработать подписку: {e}")
+        except (yaml.YAMLError, UnicodeError, ValueError, TypeError, AttributeError):
+            log("не удалось обработать подписку")
+            return self.send_plain(502, "invalid subscription backend response")
 
         self.send_response(code)
         for k in PASS_HEADERS:
@@ -195,6 +285,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if v:
                     self.send_header(k.title(), v)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -213,7 +304,7 @@ def main():
     cert, key = CONF.get("cert"), CONF.get("key")
     if not cert:
         srv = Server((CONF.get("listen", "127.0.0.1"), int(CONF["port"])), Handler)
-        log(f"kit-sub слушает http://{CONF.get('listen', '127.0.0.1')}:{CONF['port']}{PATH} (TLS снимает nginx)")
+        log("kit-sub запущен за nginx")
         srv.serve_forever()
         return
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -231,13 +322,13 @@ def main():
                     ctx.load_cert_chain(cert, key)
                     stamp[0] = m
                     log("сертификат обновлён")
-            except (OSError, ssl.SSLError) as e:
-                log(f"не удалось перечитать сертификат: {e}")
+            except (OSError, ssl.SSLError):
+                log("не удалось перечитать сертификат")
 
     threading.Thread(target=reload_cert, daemon=True).start()
     srv = Server((CONF.get("listen", "0.0.0.0"), int(CONF["port"])), Handler)
     srv.ssl_ctx = ctx
-    log(f"kit-sub слушает {CONF.get('listen', '0.0.0.0')}:{CONF['port']}{PATH}")
+    log("kit-sub запущен с TLS")
     srv.serve_forever()
 
 

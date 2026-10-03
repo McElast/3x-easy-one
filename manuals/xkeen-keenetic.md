@@ -54,15 +54,11 @@
 
 ## 4. Установите XKeen
 
-Подключитесь по SSH и выполните:
-
-```bash
-opkg update && opkg upgrade && opkg install curl tar && cd /tmp
-sh -c "$(curl -sSL https://raw.githubusercontent.com/jameszeroX/XKeen/main/install.sh)"
-```
-
-Если GitHub недоступен, замените адрес на
-`https://cdn.jsdelivr.net/gh/jameszeroX/XKeen@main/install.sh`.
+XKeen — отдельный внешний инструмент для роутера, не часть установки KIT на VPS.
+Следуйте [официальному порядку установки](https://github.com/jameszeroX/XKeen/wiki/Порядок-установки).
+Перед запуском изучите installer и выберите конкретную проверенную версию/commit;
+убедитесь, что его вложенные загрузки тоже предсказуемы. Не запускайте изменяемый
+`main` или CDN-копию вслепую. Эта сборка не устанавливает и не обновляет XKeen автоматически.
 
 Установщик спросит ядро (Xray или Mihomo), геобазы, нужно ли исключать
 российские IP и добавлять XKeen в автозагрузку.
@@ -76,10 +72,10 @@ sh -c "$(curl -sSL https://raw.githubusercontent.com/jameszeroX/XKeen/main/insta
 1. `04_outbounds.json` — подключение к вашему серверу.
 2. `05_routing.json` — какие сайты и сервисы пускать через прокси.
 
-Оба файла собирает наш **[генератор Xray](https://itsnotkubrick.github.io/3X-UI_KIT/tools/xray/)**:
+Оба файла собирает наш **[генератор Xray](../tools/xray/index.html)**:
 вставьте ссылку `vless://`, отметьте сервисы — и получите одну команду,
 которая сама запишет файлы на роутер и перезапустит XKeen. Для ядра Mihomo
-и ссылок Hysteria2 есть **[генератор Mihomo](https://itsnotkubrick.github.io/3X-UI_KIT/tools/mihomo/)**.
+и ссылок Hysteria2 есть **[генератор Mihomo](../tools/mihomo/index.html)**.
 
 > [!NOTE]
 > Генераторы работают прямо в браузере — ссылки с паролями никуда не отправляются.

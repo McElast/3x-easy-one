@@ -1,0 +1,3 @@
+*.sh text eol=lf
+scripts/repo.conf text eol=lf
+KIT_VERSION text eol=lf

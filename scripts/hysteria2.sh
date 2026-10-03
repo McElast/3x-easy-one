@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Hysteria2 одной командой — https://github.com/itsnotkubrick/3X-UI_KIT
+# Original KIT: https://github.com/itsnotkubrick/3X-UI_KIT
 #
-# Установка:   bash <(curl -fsSL https://raw.githubusercontent.com/itsnotkubrick/3X-UI_KIT/main/scripts/hysteria2.sh)
+# Установка: скачайте полный архив версии и выполните bash scripts/hysteria2.sh
 # Управление:  hy2 help
 #
 # Ставит официальный бинарник Hysteria2 (версия закреплена ниже, контрольная
@@ -10,9 +10,19 @@
 
 set -Eeuo pipefail
 
-HY_VERSION="2.12.3"
+umask 077
+HY_CONFIG_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ -f $HY_CONFIG_DIR/repo.conf ]]; then
+  # shellcheck source=repo.conf
+  . "$HY_CONFIG_DIR/repo.conf"
+elif [[ -f /etc/kit/repo.conf ]]; then
+  # shellcheck disable=SC1091
+  . /etc/kit/repo.conf
+else
+  echo 'Запустите scripts/hysteria2.sh из полного архива KIT.' >&2; exit 1
+fi
 HY_REPO="HyNetworks/hysteria"
-SELF_URL="https://raw.githubusercontent.com/itsnotkubrick/3X-UI_KIT/main/scripts/hysteria2.sh"
+SELF_URL="$RAW_BASE/scripts/hysteria2.sh"
 
 BIN=/usr/local/bin/hysteria
 CLI=/usr/local/bin/hy2
@@ -68,14 +78,14 @@ port_busy() { # port proto(tcp|udp)
 }
 
 public_ip() {
+  # Read the local route instead of sending the server IP to lookup services.
   local ip
-  for u in https://api.ipify.org https://ifconfig.me/ip https://ipv4.icanhazip.com; do
-    ip=$(curl -4 -fsS -m 6 "$u" 2>/dev/null | tr -d '[:space:]') || true
-    [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && { echo "$ip"; return; }
-  done
-  ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}'
+  ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+  case $ip in
+    10.*|127.*|192.168.*|169.254.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) return 1 ;;
+  esac
+  [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "$ip"
 }
-
 rand() { openssl rand -hex "${1:-16}"; }
 
 # ---------- установка ----------
@@ -104,6 +114,11 @@ install_binary() {
 }
 
 install_cli() {
+  install -d -m 700 /etc/kit
+  if [[ $HY_CONFIG_DIR != /etc/kit && -f $HY_CONFIG_DIR/repo.conf ]]; then
+    install -m 600 "$HY_CONFIG_DIR/repo.conf" /etc/kit/repo.conf
+    install -m 600 "$HY_CONFIG_DIR/../KIT_VERSION" /etc/kit/KIT_VERSION
+  fi
   # Скрипт копирует сам себя, чтобы работала команда hy2.
   local src="${BASH_SOURCE[0]}"
   if [[ -f $src && $src != /dev/fd/* && $src != /proc/* ]]; then
@@ -212,11 +227,18 @@ tune_sysctl() {
 setup_ufw() {
   . "$STATE"
   [[ ${UFW:-yes} == yes ]] || return 0
-  local ssh_port
-  ssh_port=$(ss -H -ltnp 2>/dev/null | awk '/sshd/ {sub(/.*:/,"",$4); print $4; exit}')
-  ssh_port=${ssh_port:-22}
-  say "Настраиваю ufw: SSH $ssh_port/tcp, Hysteria $PORT/udp${DOMAIN:+, сайт 80/tcp и $PORT/tcp}"
-  ufw allow "$ssh_port/tcp" >/dev/null
+  local ssh_ports=() ssh_port
+  mapfile -t ssh_ports < <(ss -H -ltnp | awk '/sshd|"ssh"/ {sub(/.*:/,"",$4); print $4}' | sort -nu)
+  if [[ ${SSH_CONNECTION:-} ]]; then
+    ssh_port=${SSH_CONNECTION##* }
+    [[ $ssh_port =~ ^[0-9]+$ ]] && ssh_ports+=("$ssh_port")
+  fi
+  if ((${#ssh_ports[@]} == 0)); then
+    warn "Не удалось определить SSH-порт: UFW не включаю. Проверьте firewall через консоль VPS."
+    return 0
+  fi
+  say "Настраиваю ufw: SSH ${ssh_ports[*]}, Hysteria $PORT/udp${DOMAIN:+, сайт 80/tcp и $PORT/tcp}"
+  for ssh_port in "${ssh_ports[@]}"; do ufw allow "$ssh_port/tcp" >/dev/null; done
   ufw allow "$PORT/udp" >/dev/null
   if [[ -n ${DOMAIN:-} ]]; then
     ufw allow 80/tcp >/dev/null
@@ -291,13 +313,13 @@ cmd_install() {
   fi
 
   install_packages
-  HOST=${HOST:-${DOMAIN:-$(public_ip)}}
+  HOST=${HOST:-${DOMAIN:-$(public_ip || true)}}
   [[ -n $HOST ]] || die "Не удалось узнать внешний IP. Укажите его: --host 1.2.3.4"
   if [[ -n $DOMAIN ]]; then
     local resolved my_ip
     resolved=$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk 'NR==1{print $1}') || true
     [[ -n $resolved ]] || die "Домен $DOMAIN не найден в DNS. Создайте A-запись на IP сервера и подождите пару минут."
-    my_ip=$(public_ip)
+    my_ip=$(public_ip || true)
     [[ $resolved == "$my_ip" ]] || warn "Домен $DOMAIN указывает на $resolved, а IP сервера $my_ip. Если сертификат не выпустится — проверьте A-запись."
   fi
   SNI=${SNI:-${DOMAIN:-www.bing.com}}
@@ -423,13 +445,9 @@ cmd_status() {
 
 cmd_update() {
   require_installed
-  local tmp
-  tmp=$(mktemp)
-  say "Скачиваю свежую версию скрипта"
-  curl -fsSL --retry 3 -o "$tmp" "$SELF_URL"
-  bash "$tmp" __update_binary
-  install -m 755 "$tmp" "$CLI"
-  rm -f "$tmp"
+  say "Источник закреплён: $REPO_OWNER/$REPO_NAME:$REPO_REF"
+  say "Для смены версии сначала проверьте release и сохраните /etc/hysteria; см. manuals/DEVELOPMENT.md."
+  cmd_update_binary
 }
 
 cmd_update_binary() {
