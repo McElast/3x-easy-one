@@ -51,7 +51,7 @@ TUN в YAML выключен: пользователь включает его �
 ```bash
 git status
 git diff --check
-git add .gitignore .gitattributes KIT_VERSION install.sh README.md SECURITY.md CHANGELOG.md \
+git add .gitignore .gitattributes LICENSE KIT_VERSION install.sh README.md SECURITY.md CHANGELOG.md \
   scripts manuals tools tests index.html
 git diff --cached
 git commit -m "Release v1.0.0"
