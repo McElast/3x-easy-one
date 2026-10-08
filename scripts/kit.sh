@@ -92,7 +92,7 @@ human() { # байты → «1.2 ГБ»
 sub_url() { echo "${SUB_BASE}$1"; }
 
 show_link() { # имя subId
-  local url
+  local url qr qr_width qr_columns
   url=$(sub_url "$2")
   echo
   echo "Подписка ${B}$1${N} — совместимые протоколы одной ссылкой. Вставьте в Clash Verge Rev, FlClash или Happ:"
@@ -100,7 +100,22 @@ show_link() { # имя subId
   echo
   echo "$url"
   echo
-  command -v qrencode >/dev/null && qrencode -t ANSIUTF8 -m 1 "$url"
+  if [[ -t 1 ]] && command -v qrencode >/dev/null; then
+    # Background cells avoid font-dependent UTF-8 half blocks. Keep the full
+    # quiet zone and do not print a QR that the terminal would wrap.
+    if qr=$(qrencode -t ANSI -m 4 "$url"); then
+      qr_width=$(awk 'NR == 1 { gsub(/\033\[[0-9;]*m/, ""); print length; exit }' <<<"$qr")
+      qr_columns=$(tput cols 2>/dev/null) || qr_columns=${COLUMNS:-80}
+      [[ $qr_columns =~ ^[0-9]+$ ]] || qr_columns=80
+      if ((qr_width > 10#$qr_columns)); then
+        echo "Для QR нужна ширина $qr_width символов (сейчас $qr_columns). Разверните терминал и повторите: kit user link $1"
+      else
+        printf '%s\n' "$qr"
+      fi
+    else
+      echo "Не удалось построить QR. Ссылка подписки указана выше." >&2
+    fi
+  fi
   echo "${D}AmneziaVPN и Telegram: kit user link $1 --all — отдельные ссылки vpn:// и tg://${N}"
 }
 
